@@ -1,7 +1,11 @@
 const asana = require('asana');
+require('dotenv').config();
+console.log(process.env);
+
 
 AMBI_TOKEN = process.env.AMBI_TOKEN;
 TEST_TOKEN = process.env.TEST_TOKEN;
+
 
 const client = asana.Client.create({
 	defaultHeaders: { 'Asana-Disable': 'new_user_task_lists' }})

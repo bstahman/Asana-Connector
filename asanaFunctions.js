@@ -1,4 +1,5 @@
 const asana = require('asana');
+require('dotenv').config();
 
 AMBI_TOKEN = process.env.AMBI_TOKEN;
 TEST_TOKEN = process.env.TEST_TOKEN;
