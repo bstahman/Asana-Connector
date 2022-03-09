@@ -15,15 +15,16 @@ async function appendPONum(string) {
 }
 
 function getPONums() {
+	
 	try {
 
-	  const data = fs.readFileSync(POTextFile, 'utf8');
+		const data = fs.readFileSync(POTextFile, 'utf8');
 	  
-	  return data.split(',');
+		return data.split(',');
 	} 
 	catch (err) {
 
-	  console.error(err);
+		console.error(err);
 	}
 };
 

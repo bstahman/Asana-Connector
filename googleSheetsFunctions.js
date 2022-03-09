@@ -5,7 +5,7 @@ let keyData = JSON.parse(fs.readFileSync('keys.json'));
 const clientEmail = keyData.client_email;
 const privateKey = keyData.private_key;
 
-const sheetID = '1UkIITVF3kBwXbTHO5bp8VVgv5Jk172yrorOQSZwBPbE';
+const sheetID = '1RPBcetVCyO5J9I63Pol6BZTQm25LRYhs3xjSwYiucFc';
 
 const doc = new GoogleSpreadsheet(sheetID);
 
@@ -28,27 +28,31 @@ async function appendOrdersToSpreadsheet(orders) {
 
 	for (let order of orders) {
 
-		if (!["Created", "Processing", "PO Created"].includes(order.get('PO Status'))) {
+		row = new Object();
 
-			row = new Object();
+		row['PO Number'] = order.get('PO Number');
+		row['Requestor'] = order.get('Requester');
+		row['Categorization'] = order.get('PO Type');
+		row['Destination'] = order.get('Destination');
+		row['PO Date'] = order.get('PO Date');
+		row['Description'] = order.get('Description');
 
-			row['PO Number'] = order.get('PO Number');
-			row['Requestor'] = order.get('Requester');
-			row['Categorization'] = order.get('PO Type');
-			row['Destination'] = order.get('Destination');
-
-			if (vendorsArr.includes(order.get('Supplier'))) {
-
-				row['Vendor'] = order.get('Supplier');
-			}
-			else if (manufacturersArr.includes(order.get('Supplier'))){
-
-				row['Manufacturer'] = order.get('Supplier');
-			}
-
-			rowList.push(row);
+		if (order.get("Drive Link")) {
+			row['Documents'] = order.get("Drive Link");
 		}
+
+		if (vendorsArr.includes(order.get('Supplier'))) {
+
+			row['Vendor'] = order.get('Supplier');
+		}
+		else if (manufacturersArr.includes(order.get('Supplier'))){
+
+			row['Manufacturer'] = order.get('Supplier');
+		}
+
+		rowList.push(row);
 	}
+	console.log(rowList[0]);
 	const moreRows = await sheet.addRows(rowList);
 }
 

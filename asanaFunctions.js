@@ -1,8 +1,6 @@
 const asana = require('asana');
-require('dotenv').config();
 
 AMBI_TOKEN = process.env.AMBI_TOKEN;
-TEST_TOKEN = process.env.TEST_TOKEN;
 
 const client = asana.Client.create({
 	defaultHeaders: { 'Asana-Disable': 'new_user_task_lists' }})
@@ -58,7 +56,13 @@ function getProjectTaskIds(projectId) {
 // returns map of a single PO's data given a task id 
 async function getOrderDataFromTask(taskId) {
 
-	var customFieldNames = ["PO Number","Supplier","Requester","PO Type","Destination","PO Status"];
+	var customFieldNames = ["PO Number",
+							"Supplier",
+							"Requester",
+							"PO Type",
+							"Destination",
+							"PO Status",
+							"PO Date"];
 
 	order = await Promise.resolve(getDisplayVals(taskId, customFieldNames));
 
@@ -80,12 +84,19 @@ function getDisplayVal(taskId, customFieldName) {
 	return client.tasks.getTask(taskId)
 	.then((result) => {
 
-		return getCustomFieldByName(result, customFieldName).display_value;
+		field = getCustomFieldByName(result, customFieldName).display_value;
+
+		// grabs first name only
+		if (customFieldName == "Requester") {
+			field = field.split(" ")[0];
+		}
+
+		return field;
     });
 }
 
 // customfieldnames is an arr
-// returns map of {customFieldName => displayValue}
+// returns map of {customFieldName => displayValue} (plus the description)
 function getDisplayVals(taskId, customFieldNames) {
 
 	var displayVals = new Map();
@@ -95,9 +106,31 @@ function getDisplayVals(taskId, customFieldNames) {
 
 		for(var customFieldName of customFieldNames) {
 
-			displayVals.set(customFieldName, 
-						getCustomFieldByName(result, customFieldName).display_value);
+			field = getCustomFieldByName(result, customFieldName).display_value;
+
+			if(customFieldName == "Supplier") {
+				if(["DWF", "DW Fritz"].includes(field)) {
+
+					field = "DW Fritz Automation";
+				}
+
+				if(field.includes("Yaskawa")) {
+
+					field = 'Yaskawa';
+				}
+			}
+
+			// grabs first name only
+			if (customFieldName == "Requester") {
+
+				field = field.split(" ")[0];
+			}
+
+			displayVals.set(customFieldName, field);
 		}
+
+		displayVals.set('Description',getDescriptionFromNotes(result.notes));
+
 		return displayVals;
     });
 }
@@ -113,4 +146,102 @@ function getCustomFieldByName(result, customFieldName) {
     }
 }
 
-module.exports = { getOrdersInfo, getOrderDataFromTask, getProjectTaskIds, getOrderDataFromTasks };
+async function getSignedPODocLinkFromTask(taskID) {
+
+	signedDocID = await client.attachments.getAttachmentsForTask(taskID)
+	    .then((result) => {
+
+	    	signedDocID = null;
+
+	        for (var attachment of result.data) {
+
+		    	if(attachment.name.includes("signed")) {
+
+		    		signedDocID = attachment.gid;
+		    	}
+    		}
+    		return signedDocID;
+	    });
+
+    if (!signedDocID) {
+
+    	return false;
+    }
+
+    docLink = await client.attachments.getAttachment(signedDocID)
+	    .then((result) => {
+	        
+	    	return result.download_url;
+	    });
+
+	return docLink ? docLink : false;
+}
+
+// returns [name, link]
+async function getSignedDocInfoFromTask(taskID) {
+
+	var signedDocInfo = await client.attachments.getAttachmentsForTask(taskID)
+	    .then((result) => {
+
+	    	signedDocID = null;
+	    	signedDocName = null;
+
+	        for (var attachment of result.data) {
+
+		    	if(attachment.name.includes("signed")) {
+
+		    		signedDocID = attachment.gid;
+		    		signedDocName = attachment.name
+		    	}
+    		}
+    		return [signedDocID,signedDocName];
+	    });
+
+	var signedDocID = signedDocInfo[0];
+	var signedDocName = signedDocInfo[1];
+
+    if (!signedDocID) {
+
+    	return false;
+    }
+
+    docLink = await client.attachments.getAttachment(signedDocID)
+	    .then((result) => {
+	        
+	    	return result.download_url;
+	    });
+
+	return docLink ? [signedDocName,docLink] : false;
+}
+
+function getDescriptionFromNotes(string) {
+
+	var descriptionStartIndex = 0;
+	var descriptionEndIndex = 0;
+	var i = 0;
+	var len = string.length;
+
+	while(i < len-12 && string.substring(i,i+12) != "Description:")
+	{
+		i++;
+	}
+
+	if (i == len-1) {
+		return '';
+	}
+
+	i+=12;
+	
+	descriptionStartIndex = i;
+
+	while(i < len-1 && string.substring(i,i+1) != "—") {
+		i++;
+	}
+
+	descriptionEndIndex = i;
+
+	return string.substring(descriptionStartIndex,descriptionEndIndex).trim();
+
+}
+
+module.exports = { getOrdersInfo, getOrderDataFromTask, getProjectTaskIds, getOrderDataFromTasks, getSignedDocInfoFromTask };

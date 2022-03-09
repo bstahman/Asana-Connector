@@ -1,11 +1,8 @@
 const asana = require('asana');
-require('dotenv').config();
-console.log(process.env);
-
+const fs = require("fs");
+const request = require("request-promise-native");
 
 AMBI_TOKEN = process.env.AMBI_TOKEN;
-TEST_TOKEN = process.env.TEST_TOKEN;
-
 
 const client = asana.Client.create({
 	defaultHeaders: { 'Asana-Disable': 'new_user_task_lists' }})
@@ -16,6 +13,7 @@ client.headers={'asana-disable': 'string_ids'};
 const purchasingProjectID = '1201392121642374';
 const testProjectID = '1201882405835962';
 const sheetsFuncs = require('./googleSheetsFunctions');
+const driveFuncs = require('./googleDriveFunctions');
 const asanaFuncs = require('./asanaFunctions');
 const dataStorage = require('./dataStorage');
 
@@ -41,24 +39,40 @@ async function addExistingPOsToDB() {
 
 async function addOrderTaskToSpreadsheet(taskId) {
 
-	response = await sheetsFuncs.appendOrdersToSpreadsheet([await asanaFuncs.getOrderDataFromTask(taskId)]);
-}
+	var order = await asanaFuncs.getOrderDataFromTask(taskId);
+						
+	if (!dataStorage.PONumInDb(order.get('PO Number'))) {
+		
+		var docInfo = await asanaFuncs.getSignedDocInfoFromTask(taskId);
 
-async function addOrderTasksToSpreadsheet() {
+		var awsLink = docInfo[1];
+		var docName = docInfo[0];
 
-	taskIds = await asanaFuncs.getProjectTaskIds(purchasingProjectID);
+		if (awsLink) {
 
-	orders = await asanaFuncs.getOrderDataFromTasks(taskIds);
+			await downloadPDF(awsLink, docName);
 
-	response = await sheetsFuncs.appendOrdersToSpreadsheet(orders);
+			folderName = "PO " + order.get('PO Number') + " " + order.get('Supplier');
+
+			driveLink = await driveFuncs.addSignedPODocToDrive(docName, folderName, docName);
+
+			order.set("Drive Link", driveLink);
+
+		}
+
+		sheetsFuncs.appendOrdersToSpreadsheet([order]);
+
+		dataStorage.appendPONum(order.get('PO Number'));
+	}	
+
 }
 
 function asanaEventHandler() {
 
-	var acceptableStatuses = ['Waiting on Supplier','Order Confirmed','In Transit','Received','Void'];
+	var acceptableStatuses = ['PO Created','Waiting on Supplier','Order Confirmed','In Transit','Received','Void'];
 
 	client.events.stream(purchasingProjectID, {
-	    periodSeconds: 5
+	    periodSeconds: 60
 	})
 	    .on('data', async function (event) {
 
@@ -73,6 +87,27 @@ function asanaEventHandler() {
 					
 					if (!dataStorage.PONumInDb(order.get('PO Number'))) {
 
+						// give Linda time to make additional changes (3 mins)
+						await sleep(18000);
+
+						var docInfo = await asanaFuncs.getSignedDocInfoFromTask(event.resource.gid);
+
+						var awsLink = docInfo[1];
+						var docName = docInfo[0];
+
+						if (awsLink) {
+
+							await downloadPDF(awsLink, docName);
+
+							folderName = "PO " + order.get('PO Number') + " " + order.get('Supplier');
+
+							driveLink = await driveFuncs.addSignedPODocToDrive(docName, folderName, docName);
+
+							order.set("Drive Link", driveLink);
+
+							fs.unlink(docName);
+						}
+
 						sheetsFuncs.appendOrdersToSpreadsheet([order]);
 
 						dataStorage.appendPONum(order.get('PO Number'));
@@ -84,6 +119,20 @@ function asanaEventHandler() {
 	    		console.log(error);
 	    	}
 	    });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+
+async function downloadPDF(pdfURL, outputFilename) {
+
+    let pdfBuffer = await request.get({uri: pdfURL, encoding: null});
+
+    fs.writeFileSync(outputFilename, pdfBuffer);
 }
 
 asanaEventHandler();
